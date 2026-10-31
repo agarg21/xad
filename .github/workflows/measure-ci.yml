@@ -1,10 +1,6 @@
-name: CI
+name: measure-ci
 on:
-  # branches build through their pull request only, so they do not run twice
-  push:
-    branches: [main]
-    tags: ["**"]
-  pull_request:
+  workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -453,7 +449,7 @@ jobs:
           lcov --add-tracefile ./tmp/lcov_base.info --add-tracefile ./tmp/lcov_run.info --output-file ./tmp/lcov_total.info
           lcov --remove ./tmp/lcov_total.info "$PWD/*" "${{ env.GITHUB_WORKSPACE }}/test/*" "${{ env.GITHUB_WORKSPACE }}/samples/*" --output-file ./coverage/lcov.info
       - name: upload coverage results
-        if: ${{ matrix.coverage }}
+        if: false  # measurement harness: no Coveralls upload from the fork
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -826,7 +822,7 @@ jobs:
           brew tap coverallsapp/coveralls --quiet
           brew trust coverallsapp/coveralls || true  # no-op on Homebrew < 6
       - name: upload coverage results
-        if: ${{ matrix.coverage }}
+        if: false  # measurement harness: no Coveralls upload from the fork
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -849,44 +845,3 @@ jobs:
             -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install" 
           cmake --build .
 
-  coverage_finish:
-    name: Coverage Collect
-    needs: [ build_and_test_gcc, build_and_test_macos ]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Coveralls Finished
-        uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          parallel-finished: true
-      - name: Rerun coverage with retry
-        # Coveralls ingests uploads asynchronously - the parallel-finished webhook
-        # often fires before all jobs are indexed, resulting in 0% coverage.
-        # Retry rerun_build until all jobs are accounted for.
-        # See: https://github.com/lemurheavy/coveralls-public/issues/1653
-        #      https://github.com/lemurheavy/coveralls-public/issues/1786
-        run: |
-          EXPECTED_JOBS=5
-          for i in 1 2 3 4 5; do
-            sleep 30
-            RESPONSE=$(curl -s --location \
-              'https://coveralls.io/rerun_build?repo_token=${{ secrets.COVERALLS_REPO_TOKEN }}&build_num=${{ github.run_id }}')
-            JOBS=$(echo "$RESPONSE" | jq -r '.jobs // 0')
-            echo "Attempt $i: $RESPONSE (jobs=$JOBS)"
-            if [ "$JOBS" -ge "$EXPECTED_JOBS" ]; then
-              echo "All $JOBS jobs accounted for."
-              exit 0
-            fi
-          done
-          echo "::warning::Only $JOBS of $EXPECTED_JOBS coverage jobs found after retries"
-
-  event_file:
-    name: Event File
-    runs-on: ubuntu-latest
-    steps:
-      - name: Upload
-        uses: actions/upload-artifact@v7
-        with:
-          name: Event File
-          path: ${{ github.event_path }}
-          overwrite: true
