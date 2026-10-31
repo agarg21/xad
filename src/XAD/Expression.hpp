@@ -23,6 +23,7 @@
 ******************************************************************************/
 
 #pragma once
+// measure: worst-case cache test (comment-only edit)
 #include <XAD/Macros.hpp>
 
 #include <utility>
